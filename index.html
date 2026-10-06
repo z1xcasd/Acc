@@ -125,10 +125,15 @@ h1{margin:0;font-size:22px;font-weight:700}
 .fabs{position:fixed;right:max(18px,calc(50% - 222px));bottom:calc(18px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:10px}
 .fabs .fab{position:static}
 .micfab{width:56px;height:56px;border:0;border-radius:50%;background:#087A6B;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(8,122,107,.3)}
+.camfab{width:56px;height:56px;border:1px solid #C9D0DF;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(22,32,58,.16)}
+.thumb{width:100%;max-height:240px;object-fit:contain;border-radius:14px;background:#fff;border:1px solid #E1E6EF}
+.warn{background:#FFF4DB;color:#7A4B00;border-radius:12px;padding:10px 14px;font-size:15px}
+select.fin{appearance:auto}
 </style>
 </head>
 <body>
 <div id="app" class="wrap"></div>
+<input type="file" id="rc-file" accept="image/*" style="display:none">
 
 <script>
 (function () {
@@ -183,6 +188,7 @@ h1{margin:0;font-size:22px;font-weight:700}
     edit: false, confirm: false, busy: false, loading: true, err: '', updated: '', msg: '', undo: null, listening: false
   };
 
+  var R = { busy: false, preview: '', data: null };
   var W = {};
   function resetW() { W = { step: 1, type: 'expense', cat: null, amount: '', note: '', dateMode: 'today', date: '', say: '', label: '' }; }
   resetW();
@@ -306,6 +312,8 @@ h1{margin:0;font-size:22px;font-weight:700}
 
   function fabHTML() {
     return '<div class="fabs">' +
+      '<button class="camfab" type="button" data-act="receipt" aria-label="ถ่ายหรือเลือกรูปใบเสร็จ">' +
+      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16203A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>' +
       (SR ? '<button class="micfab" type="button" data-act="micfab" aria-label="พูดเพื่อจดบัญชี">' +
         '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>' : '') +
       '<button class="fab" type="button" data-act="fab" aria-label="เพิ่มรายการ">' +
@@ -379,6 +387,87 @@ h1{margin:0;font-size:22px;font-weight:700}
       '<button class="go" type="button" data-act="saysave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึก') + '</button>';
   }
 
+  // ---------- อ่านใบเสร็จ ----------
+  function shrinkImage(file, cb) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      var max = 1600, w = img.naturalWidth, h = img.naturalHeight, sc = Math.min(1, max / Math.max(w, h));
+      var c = document.createElement('canvas');
+      c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      var data = c.toDataURL('image/jpeg', 0.8);
+      URL.revokeObjectURL(url);
+      cb(null, data.split(',')[1], data);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); cb('เปิดรูปนี้ไม่ได้ ลองเลือกรูปอื่น'); };
+    img.src = url;
+  }
+
+  function startReceipt(file) {
+    R = { busy: true, preview: '', data: null };
+    S.screen = 'receipt'; S.err = ''; S.msg = ''; S.undo = null; render();
+    shrinkImage(file, function (err, b64, preview) {
+      if (err) { R.busy = false; S.err = err; render(); return; }
+      R.preview = preview; render();
+      fetch(BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ api: 'receipt', token: TOKEN, image: b64, mime: 'image/jpeg' })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          R.busy = false;
+          if (j && j.ok) {
+            var d = j.data || {};
+            R.data = {
+              date: d.date || '', amt: d.total ? String(d.total) : '', cat: d.cat || 'อื่นๆ',
+              note: d.note || d.merchant || '', confidence: d.confidence, noDate: !d.date, noAmt: !d.total, left: d.left
+            };
+            if (!R.data.date) R.data.date = ymd(new Date());
+          } else { S.err = (j && j.error) || 'อ่านใบเสร็จไม่สำเร็จ'; }
+          render();
+        })
+        .catch(function () { R.busy = false; S.err = 'เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'; render(); });
+    });
+  }
+
+  function receiptHTML() {
+    var head = '<button class="back" type="button" data-act="rcback">' + LEFT + 'ยกเลิก</button>' + errBox();
+    var thumb = R.preview ? '<img class="thumb" alt="รูปใบเสร็จ" src="' + R.preview + '">' : '';
+    if (R.busy) {
+      return head + '<div class="q">กำลังอ่านใบเสร็จ…</div>' + thumb +
+        '<div class="note" style="text-align:left">ใช้เวลาประมาณ 5–15 วินาที</div>';
+    }
+    if (!R.data) {
+      return head + '<div class="q">อ่านใบเสร็จไม่สำเร็จ</div>' + thumb +
+        '<button class="go" type="button" data-act="rcretry">ถ่ายหรือเลือกรูปใหม่</button>';
+    }
+    var d = R.data, warn = '';
+    if (d.noAmt || d.noDate || (d.confidence !== null && d.confidence !== undefined && d.confidence < 0.6)) {
+      warn = '<div class="warn" role="status">AI อ่านบางค่าไม่ชัด' + (d.noAmt ? ' (ยอดรวม)' : '') + (d.noDate ? ' (วันที่ ใช้วันนี้ไปก่อน)' : '') + ' กรุณาตรวจก่อนบันทึก</div>';
+    }
+    var opts = EXP.map(function (c) { return '<option' + (c === d.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+    return head + '<div class="q">ตรวจก่อนบันทึก</div>' + thumb + warn +
+      '<div class="lab">วันที่</div><input id="r-date" class="fin" type="date" value="' + esc(d.date) + '">' +
+      '<div class="lab">ยอดรวม (บาท)</div><input id="r-amt" class="fin" inputmode="decimal" placeholder="0.00" value="' + esc(d.amt) + '">' +
+      '<div class="lab">หมวด</div><select id="r-cat" class="fin">' + opts + '</select>' +
+      '<div class="lab">บันทึกช่วยจำ</div><input id="r-note" class="fin" maxlength="60" value="' + esc(d.note) + '">' +
+      '<div class="note" style="text-align:left">รูปถูกส่งไปให้ Google Gemini อ่าน (รุ่นฟรีอาจถูกนำไปปรับปรุงบริการของ Google) และไม่ได้เก็บรูปไว้ในชีต' +
+        (d.left !== undefined && d.left !== null ? ' · วันนี้อ่านได้อีก ' + d.left + ' ครั้ง' : '') + '</div>' +
+      '<button class="go" type="button" data-act="rcsave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึกลงชีต') + '</button>' +
+      '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
+  }
+
+  var fileInput = document.getElementById('rc-file');
+  if (fileInput) {
+    fileInput.addEventListener('change', function () {
+      var f = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (f) startReceipt(f);
+    });
+  }
+
   function setupHTML() {
     return '<h1>เชื่อมต่อบัญชี</h1>' + errBox() +
       '<div class="sub">วางลิงก์จากชีต แท็บ วิธีใช้ ช่อง B6 (ลิงก์ที่ลงท้ายด้วย ?token=รหัสของคุณ) ทำครั้งเดียว เก็บไว้ในเครื่องนี้เท่านั้น</div>' +
@@ -437,7 +526,7 @@ h1{margin:0;font-size:22px;font-weight:700}
     if (S.screen === 'detail' && !findRow(S.row)) S.screen = 'list';
     if (S.screen === 'list' && S.cat !== null && !S.loading && listRows().length === 0) S.screen = 'home';
     if (!TOKEN) S.screen = 'setup';
-    var body = S.screen === 'setup' ? setupHTML() : S.screen === 'home' ? homeHTML() : S.screen === 'list' ? listHTML() : S.screen === 'add' ? addHTML() : S.screen === 'say' ? sayHTML() : detailHTML();
+    var body = S.screen === 'setup' ? setupHTML() : S.screen === 'receipt' ? receiptHTML() : S.screen === 'home' ? homeHTML() : S.screen === 'list' ? listHTML() : S.screen === 'add' ? addHTML() : S.screen === 'say' ? sayHTML() : detailHTML();
     app.innerHTML = body + ((S.screen === 'home' || S.screen === 'list') ? fabHTML() : '');
     if (S.screen === 'say' && !S.listening) {
       setTimeout(function () { var el = document.getElementById('w-say'); if (el && el.focus && !el.value) el.focus(); }, 60);
@@ -482,6 +571,26 @@ h1{margin:0;font-size:22px;font-weight:700}
     else if (act === 'sayback') { S.screen = 'add'; window.scrollTo(0, 0); }
     else if (act === 'mic') { listen(); return; }
     else if (act === 'saysave') { saveSay(); return; }
+    else if (act === 'receipt' || act === 'rcretry') { var fi = document.getElementById('rc-file'); if (fi) fi.click(); return; }
+    else if (act === 'rcback') { R = { busy: false, preview: '', data: null }; S.screen = 'home'; window.scrollTo(0, 0); }
+    else if (act === 'rcsave') {
+      var rd = R.data; if (!rd) return;
+      var ra = parseFloat(String(rd.amt).replace(/,/g, ''));
+      if (!(ra > 0)) { S.err = 'กรอกยอดรวมที่มากกว่า 0'; render(); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rd.date || '')) { S.err = 'เลือกวันที่ให้ถูกต้อง'; render(); return; }
+      var rent = { type: 'expense', cat: rd.cat, amount: ra, note: String(rd.note || '').trim(), date: rd.date };
+      S.busy = true; S.err = ''; render();
+      google.script.run
+        .withSuccessHandler(function () {
+          S.busy = false;
+          S.msg = 'บันทึกรายจ่าย ' + money(rent.amount) + ' บาท หมวด' + rent.cat + ' จากใบเสร็จแล้ว';
+          S.kind = 'expense'; S.ym = rent.date.slice(0, 7); S.screen = 'home'; S.cat = null;
+          R = { busy: false, preview: '', data: null }; load(); window.scrollTo(0, 0);
+        })
+        .withFailureHandler(fail)
+        .apiAdd(TOKEN, rent);
+      return;
+    }
     else if (act === 'micfab') { resetW(); S.screen = 'say'; window.scrollTo(0, 0); listen(); return; }
     else if (act === 'connect') {
       var u, tk, base;
@@ -559,7 +668,11 @@ h1{margin:0;font-size:22px;font-weight:700}
 
   app.addEventListener('input', function (ev) {
     var id = ev.target && ev.target.id;
-    if (id === 'w-link') W.link = ev.target.value;
+    if (id === 'r-date' && R.data) R.data.date = ev.target.value;
+    else if (id === 'r-amt' && R.data) R.data.amt = ev.target.value;
+    else if (id === 'r-cat' && R.data) R.data.cat = ev.target.value;
+    else if (id === 'r-note' && R.data) R.data.note = ev.target.value;
+    else if (id === 'w-link') W.link = ev.target.value;
     else if (id === 'w-say') W.say = ev.target.value;
     else if (id === 'w-amt') W.amount = ev.target.value;
     else if (id === 'w-note') W.note = ev.target.value;
