@@ -164,6 +164,28 @@ select.fin{appearance:auto}
   }
   function hhmm(d) { return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
 
+  // อัปเดตตารางในเครื่องทันทีหลังบันทึก/ลบ/แก้ ไม่ต้องรอโหลดทั้งชีตใหม่
+  function stamp() { S.updated = hhmm(new Date()); cacheSave(); }
+  function applyItems(arr) {
+    (arr || []).forEach(function (it) {
+      S.tx = S.tx.filter(function (t) { return t.row !== it.row; });
+      S.tx.push(it);
+    });
+    stamp();
+  }
+  function applyDelete(row) {
+    S.tx = S.tx.filter(function (t) { return t.row !== row; }).map(function (t) {
+      if (t.row > row) { var c = {}; for (var k in t) c[k] = t[k]; c.row = t.row - 1; return c; }
+      return t;
+    });
+    stamp();
+  }
+  function applyCat(row, cat, sig) {
+    S.tx.forEach(function (t) { if (t.row === row) { t.cat = cat; if (sig) t.sig = sig; } });
+    stamp();
+  }
+  function editing() { return S.screen === 'add' || S.screen === 'say' || S.screen === 'receipt' || S.screen === 'setup'; }
+
   function callApi(name, params, ok, bad) {
     var q = ['api=' + encodeURIComponent(name), 'token=' + encodeURIComponent(TOKEN), '_=' + Date.now()];
     Object.keys(params || {}).forEach(function (k) {
@@ -397,7 +419,8 @@ select.fin{appearance:auto}
       .withSuccessHandler(function (res) {
         S.busy = false; S.msg = res.msg; S.undo = { row: res.row, sig: res.sig };
         S.kind = res.type; S.ym = res.date.slice(0, 7); S.screen = 'home'; S.cat = null;
-        resetW(); load(); window.scrollTo(0, 0);
+        resetW(); window.scrollTo(0, 0);
+        if (res.item) { applyItems([res.item]); render(); } else load();
       })
       .withFailureHandler(fail)
       .apiAddText(TOKEN, text);
@@ -601,6 +624,12 @@ select.fin{appearance:auto}
       '" style="min-height:56px">' + esc(label) + '</button>';
   }
 
+  function dateOf() {
+    if (W.dateMode === 'yesterday') return ymd(new Date(Date.now() - 86400000));
+    if (W.dateMode === 'custom' && W.date) return W.date;
+    return ymd(new Date());
+  }
+
   function addHTML() {
     var isInc = W.type === 'income';
     var head = '<button class="back" type="button" data-act="addback">' + LEFT + (W.step === 1 ? 'ยกเลิก' : 'ย้อนกลับ') + '</button>' +
@@ -658,12 +687,12 @@ select.fin{appearance:auto}
       S.updated = hhmm(new Date()); cacheSave(); render(); if (cb) cb();
       return;
     }
-    S.loading = true; render();
+    S.loading = true; if (!editing()) render();
     google.script.run
       .withSuccessHandler(function (rows) {
         S.tx = rows || []; S.loading = false; S.err = '';
         S.updated = hhmm(new Date()); cacheSave();
-        render(); if (cb) cb();
+        if (!editing()) render(); if (cb) cb();
       })
       .withFailureHandler(fail)
       .apiList(TOKEN);
@@ -715,10 +744,11 @@ select.fin{appearance:auto}
         .then(function (j) {
           S.busy = false;
           if (j && j.ok) {
-            if (Array.isArray(j.list)) { S.tx = j.list; cacheSave(); S.updated = hhmm(new Date()); }
-            S.msg = 'บันทึกจากสลิปเงินเดือน ' + j.data + ' รายการแล้ว';
+            var added = j.data && j.data.items;
+            if (Array.isArray(added)) applyItems(added);
+            S.msg = 'บันทึกจากสลิปเงินเดือน ' + (j.data && j.data.count !== undefined ? j.data.count : list.length) + ' รายการแล้ว';
             S.kind = 'income'; S.ym = pd.date.slice(0, 7); S.screen = 'home'; S.cat = null;
-            R = { busy: false, preview: '', data: null }; if (!Array.isArray(j.list)) load(); window.scrollTo(0, 0);
+            R = { busy: false, preview: '', data: null }; if (!Array.isArray(added)) load(); window.scrollTo(0, 0);
           } else { S.err = (j && j.error) || 'บันทึกไม่สำเร็จ'; }
           render();
         })
@@ -734,11 +764,12 @@ select.fin{appearance:auto}
       var rent = { type: 'expense', cat: rd.cat, amount: ra, note: String(rd.note || '').trim(), date: rd.date };
       S.busy = true; S.err = ''; render();
       google.script.run
-        .withSuccessHandler(function () {
+        .withSuccessHandler(function (item) {
           S.busy = false;
           S.msg = 'บันทึกรายจ่าย ' + money(rent.amount) + ' บาท หมวด' + rent.cat + ' จากใบเสร็จแล้ว';
           S.kind = 'expense'; S.ym = rent.date.slice(0, 7); S.screen = 'home'; S.cat = null;
-          R = { busy: false, preview: '', data: null }; load(); window.scrollTo(0, 0);
+          R = { busy: false, preview: '', data: null }; window.scrollTo(0, 0);
+          if (item && item.row) { applyItems([item]); render(); } else load();
         })
         .withFailureHandler(fail)
         .apiAdd(TOKEN, rent);
@@ -768,9 +799,10 @@ select.fin{appearance:auto}
     }
     else if (act === 'undo') {
       var u = S.undo; if (!u) return;
+      var urow = u.row;
       S.busy = true; S.msg = 'กำลังยกเลิก…'; S.undo = null; render();
       google.script.run
-        .withSuccessHandler(function () { S.busy = false; S.msg = 'ยกเลิกรายการแล้ว'; load(); })
+        .withSuccessHandler(function () { S.busy = false; S.msg = 'ยกเลิกรายการแล้ว'; applyDelete(urow); render(); })
         .withFailureHandler(fail)
         .apiDelete(TOKEN, u.row, u.sig);
       return;
@@ -788,11 +820,12 @@ select.fin{appearance:auto}
       var entry = { type: W.type, cat: W.cat, amount: amt, note: W.note.trim(), date: dateOf() };
       S.busy = true; render();
       google.script.run
-        .withSuccessHandler(function () {
+        .withSuccessHandler(function (item) {
           S.busy = false;
           S.msg = 'บันทึก' + (entry.type === 'income' ? 'รายรับ' : 'รายจ่าย') + ' ' + money(entry.amount) + ' บาท หมวด' + entry.cat + ' แล้ว';
           S.kind = entry.type; S.ym = entry.date.slice(0, 7); S.screen = 'home'; S.cat = null;
-          resetW(); load(); window.scrollTo(0, 0);
+          resetW(); window.scrollTo(0, 0);
+          if (item && item.row) { applyItems([item]); render(); } else load();
         })
         .withFailureHandler(fail)
         .apiAdd(TOKEN, entry);
@@ -802,7 +835,7 @@ select.fin{appearance:auto}
     else if (act === 'setcat') {
       var t = findRow(S.row); S.busy = true; render();
       google.script.run
-        .withSuccessHandler(function () { S.busy = false; S.edit = false; load(); })
+        .withSuccessHandler(function (res) { S.busy = false; S.edit = false; applyCat(t.row, v, res && res.sig); render(); })
         .withFailureHandler(fail)
         .apiSetCategory(TOKEN, t.row, t.sig, v);
       return;
@@ -811,7 +844,7 @@ select.fin{appearance:auto}
       if (!S.confirm) { S.confirm = true; render(); return; }
       var d = findRow(S.row); S.busy = true; render();
       google.script.run
-        .withSuccessHandler(function () { S.busy = false; S.confirm = false; S.screen = 'list'; S.row = null; load(); })
+        .withSuccessHandler(function () { S.busy = false; S.confirm = false; S.screen = 'list'; S.row = null; applyDelete(d.row); render(); })
         .withFailureHandler(fail)
         .apiDelete(TOKEN, d.row, d.sig);
       return;
