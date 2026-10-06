@@ -7,6 +7,8 @@
 <meta name="theme-color" content="#F3F5FA">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>บัญชี</title>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -144,6 +146,15 @@ select.fin{appearance:auto}
   var BASE = CFG && CFG.base ? CFG.base : '';
 
   // เรียก Apps Script ผ่าน fetch (แทน google.script.run)
+  var PIGGY = null;
+  function cacheLoad() {
+    try { var c = JSON.parse(localStorage.getItem('exp.cache') || 'null'); return c && Array.isArray(c.tx) ? c : null; } catch (e) { return null; }
+  }
+  function cacheSave() {
+    try { localStorage.setItem('exp.cache', JSON.stringify({ t: Date.now(), tx: S.tx })); } catch (e) {}
+  }
+  function hhmm(d) { return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+
   function callApi(name, params, ok, bad) {
     var q = ['api=' + encodeURIComponent(name), 'token=' + encodeURIComponent(TOKEN), '_=' + Date.now()];
     Object.keys(params || {}).forEach(function (k) {
@@ -152,7 +163,10 @@ select.fin{appearance:auto}
     fetch(BASE + '?' + q.join('&'), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        if (j && j.ok) { if (ok) ok(j.data); }
+        if (j && j.ok) {
+          PIGGY = (j.list && Array.isArray(j.list)) ? j.list : null;
+          try { if (ok) ok(j.data); } finally { PIGGY = null; }
+        }
         else if (bad) bad(new Error((j && j.error) || 'เกิดข้อผิดพลาด'));
       })
       .catch(function () { if (bad) bad(new Error('เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตหรือลิงก์')); });
@@ -193,6 +207,11 @@ select.fin{appearance:auto}
   function resetW() { W = { step: 1, type: 'expense', cat: null, amount: '', note: '', dateMode: 'today', date: '', say: '', label: '' }; }
   resetW();
   function ymd(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+
+  (function () {
+    var c = TOKEN ? cacheLoad() : null;
+    if (c) { S.tx = c.tx; S.updated = hhmm(new Date(c.t)); }
+  })();
 
   var nf = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   var app = document.getElementById('app');
@@ -540,11 +559,16 @@ select.fin{appearance:auto}
 
   function load(cb) {
     if (!TOKEN) { render(); return; }
+    if (PIGGY) {
+      S.tx = PIGGY; PIGGY = null; S.loading = false; S.err = '';
+      S.updated = hhmm(new Date()); cacheSave(); render(); if (cb) cb();
+      return;
+    }
     S.loading = true; render();
     google.script.run
       .withSuccessHandler(function (rows) {
         S.tx = rows || []; S.loading = false; S.err = '';
-        var d = new Date(); S.updated = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+        S.updated = hhmm(new Date()); cacheSave();
         render(); if (cb) cb();
       })
       .withFailureHandler(fail)
@@ -609,7 +633,7 @@ select.fin{appearance:auto}
     }
     else if (act === 'logout') {
       if (window.confirm('ลบลิงก์ที่เชื่อมต่อไว้ในเครื่องนี้?')) {
-        try { localStorage.removeItem('exp.cfg'); } catch (er4) {}
+        try { localStorage.removeItem('exp.cfg'); localStorage.removeItem('exp.cache'); } catch (er4) {}
         TOKEN = ''; BASE = ''; S.tx = []; S.screen = 'setup';
       }
     }
