@@ -131,6 +131,15 @@ h1{margin:0;font-size:22px;font-weight:700}
 .thumb{width:100%;max-height:240px;object-fit:contain;border-radius:14px;background:#fff;border:1px solid #E1E6EF}
 .warn{background:#FFF4DB;color:#7A4B00;border-radius:12px;padding:10px 14px;font-size:15px}
 select.fin{appearance:auto}
+.prow{display:grid;grid-template-columns:44px minmax(0,1fr) 110px;gap:8px;align-items:center;background:#fff;border-radius:14px;padding:8px}
+.ptog{width:44px;height:44px;border:1.5px solid #C9D0DF;border-radius:12px;background:#fff;font-size:20px;font-weight:700;color:#fff}
+.ptog.on{background:#16203A;border-color:#16203A}
+.pmid{min-width:0;display:flex;flex-direction:column;gap:2px}
+.pmid .fin{min-height:44px;padding:6px 10px;font-size:16px}
+.pty{font-size:12.5px;padding-left:2px}
+.pamt{text-align:right;min-height:44px;padding:6px 10px;font-size:16px;font-variant-numeric:tabular-nums}
+.psum{background:#fff;border-radius:16px;padding:14px 16px;font-size:16px;line-height:1.7}
+.psum .ok{color:#087A6B;font-weight:600}.psum .bad{color:#B42B41;font-weight:600}
 </style>
 </head>
 <body>
@@ -423,6 +432,15 @@ select.fin{appearance:auto}
     img.src = url;
   }
 
+  // ยอดสุทธิ: ใช้ที่อ่านได้จากสลิป ถ้าไม่มีให้คำนวณจาก รวมรับ − รวมจ่าย หรือจากรายการ
+  function slipNet(d) {
+    if (d.net) return String(d.net);
+    if (d.totalIncome && d.totalExpense) return String(Math.round((d.totalIncome - d.totalExpense) * 100) / 100);
+    var inc = 0, exp = 0;
+    (d.items || []).forEach(function (it) { if (it.type === 'income') inc += it.amount; else exp += it.amount; });
+    return inc - exp > 0 ? String(Math.round((inc - exp) * 100) / 100) : '';
+  }
+
   function startReceipt(file) {
     R = { busy: true, preview: '', data: null };
     S.screen = 'receipt'; S.err = ''; S.msg = ''; S.undo = null; render();
@@ -439,7 +457,16 @@ select.fin{appearance:auto}
           R.busy = false;
           if (j && j.ok) {
             var d = j.data || {};
-            R.data = {
+            if (d.kind === 'payslip') {
+              R.data = {
+                kind: 'payslip', date: d.date || ymd(new Date()), noDate: !d.date, employer: d.employer || '',
+                net: d.net ? String(d.net) : '', netIn: slipNet(d), netGuess: !d.net, left: d.left,
+                totalIncome: d.totalIncome ? String(d.totalIncome) : '', totalExpense: d.totalExpense ? String(d.totalExpense) : '',
+                mode: 'net',
+                items: (d.items || []).map(function (it) { return { type: it.type, cat: it.cat, label: it.label, amt: String(it.amount), on: true }; })
+              };
+            } else R.data = {
+              kind: 'receipt',
               date: d.date || '', amt: d.total ? String(d.total) : '', cat: d.cat || 'อื่นๆ',
               note: d.note || d.merchant || '', confidence: d.confidence, noDate: !d.date, noAmt: !d.total, left: d.left
             };
@@ -449,6 +476,72 @@ select.fin{appearance:auto}
         })
         .catch(function () { R.busy = false; S.err = 'เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'; render(); });
     });
+  }
+
+  function numOf(v) { var n = parseFloat(String(v === undefined || v === null ? '' : v).replace(/,/g, '')); return n > 0 ? n : 0; }
+
+  function paySummary() {
+    var d = R.data, inc = 0, exp = 0, out = '';
+    if (d.mode === 'net') {
+      var line = 'จะบันทึกรายรับ <b class="inc">' + money(numOf(d.netIn)) + '</b> บาท (เงินเดือนสุทธิ) 1 รายการ · ไม่บันทึกรายการจ่ายด้านล่าง';
+      var tI = numOf(d.totalIncome), tE = numOf(d.totalExpense);
+      if (tI > 0 && tE > 0) {
+        line += Math.abs((tI - tE) - numOf(d.netIn)) <= 1
+          ? '<br><span class="ok">ตรงกับ รวมรับ − รวมจ่าย ในสลิป (' + money(tI - tE) + ')</span>'
+          : '<br><span class="bad">ไม่ตรงกับ รวมรับ − รวมจ่าย ในสลิป (' + money(tI - tE) + ') ตรวจยอดอีกครั้ง</span>';
+      }
+      return line;
+    }
+    d.items.forEach(function (it) { if (it.on) { var a = numOf(it.amt); if (it.type === 'income') inc += a; else exp += a; } });
+    out = 'รายรับ <b class="inc">' + money(inc) + '</b> · รายจ่าย <b class="exp">' + money(exp) + '</b> · คงเหลือ <b>' + money(inc - exp) + '</b>';
+    // ตรวจกับยอดรวมที่พิมพ์ในสลิป (ใช้ทุกรายการที่ AI อ่านได้ เพื่อดูว่าอ่านครบไหม)
+    var aInc = 0, aExp = 0, ti = numOf(d.totalIncome), te = numOf(d.totalExpense);
+    d.items.forEach(function (it) { var a2 = numOf(it.amt); if (it.type === 'income') aInc += a2; else aExp += a2; });
+    if (ti > 0 || te > 0) {
+      var chk = function (label, got, want) {
+        return want > 0 ? label + ' ' + (Math.abs(got - want) <= 1 ? '<span class="ok">ตรง</span>' : '<span class="bad">ไม่ตรง (สลิป ' + money(want) + ')</span>') : '';
+      };
+      out += '<br>เทียบยอดรวมในสลิป: ' + [chk('รายรับ', aInc, ti), chk('รายจ่าย', aExp, te)].filter(Boolean).join(' · ');
+    }
+    var net = numOf(d.net);
+    if (net > 0) {
+      out += Math.abs((inc - exp) - net) <= 1
+        ? '<br><span class="ok">ตรงกับยอดสุทธิในสลิป (' + money(net) + ')</span>'
+        : '<br><span class="bad">ไม่ตรงกับยอดสุทธิในสลิป (' + money(net) + ') ตรวจว่าครบหรือซ้ำไหม</span>';
+    }
+    return out;
+  }
+  function updatePayTotals() { var el = document.getElementById('p-sum'); if (el) el.innerHTML = paySummary(); }
+
+  function payslipHTML() {
+    var d = R.data;
+    var head = '<button class="back" type="button" data-act="rcback">' + LEFT + 'ยกเลิก</button>' + errBox();
+    var thumb = R.preview ? '<img class="thumb" alt="รูปสลิป" src="' + R.preview + '">' : '';
+    var warn = (d.noDate ? '<div class="warn" role="status">อ่านวันที่ไม่ได้ ใช้วันนี้ไปก่อน กรุณาตรวจ</div>' : '') +
+      (d.netGuess ? '<div class="warn" role="status">อ่านยอดรับสุทธิในสลิปไม่ชัด จึงคำนวณจากยอดรวมให้ กรุณาตรวจ</div>' : '');
+    var modes = '<div class="chips"><button class="chip' + (d.mode === 'net' ? ' on' : '') + '" type="button" data-act="pmode" data-v="net">เฉพาะยอดสุทธิ</button>' +
+      '<button class="chip' + (d.mode === 'items' ? ' on' : '') + '" type="button" data-act="pmode" data-v="items">แยกรายรับ + รายการหัก</button></div>';
+    var body = '';
+    if (d.mode === 'net') {
+      body = '<div class="lab">เงินเดือนสุทธิที่ได้รับ (บาท)</div><input id="p-net" class="fin" inputmode="decimal" placeholder="0.00" value="' + esc(d.netIn) + '">';
+    } else if (!d.items.length) {
+      body = '<div class="warn">อ่านรายการในสลิปไม่ได้ ลองเลือก เฉพาะยอดสุทธิ หรือถ่ายใหม่ให้ชัดขึ้น</div>';
+    } else {
+      body = d.items.map(function (it, i) {
+        return '<div class="prow"><button class="ptog' + (it.on ? ' on' : '') + '" type="button" data-act="pson" data-v="' + i + '" aria-label="เลือกหรือไม่เลือกรายการนี้">' + (it.on ? '✓' : '') + '</button>' +
+          '<div class="pmid"><input id="p-lbl-' + i + '" class="fin" maxlength="60" value="' + esc(it.label) + '">' +
+          '<span class="pty ' + (it.type === 'income' ? 'inc' : 'exp') + '">' + (it.type === 'income' ? 'รายรับ' : 'รายจ่าย') + ' · ' + esc(it.cat) + '</span></div>' +
+          '<input id="p-amt-' + i + '" class="fin pamt" inputmode="decimal" value="' + esc(it.amt) + '"></div>';
+      }).join('');
+    }
+    return head + '<div class="q">สลิปเงินเดือน' + (d.employer ? ' · ' + esc(d.employer) : '') + '</div>' + thumb + warn +
+      '<div class="lab">วันที่ได้รับเงินเดือน</div><input id="p-date" class="fin" type="date" value="' + esc(d.date) + '">' +
+      modes + body +
+      '<div class="psum" id="p-sum">' + paySummary() + '</div>' +
+      '<div class="note" style="text-align:left">ถ้าบันทึกเงินเดือนเดือนนี้ไว้แล้ว อย่าบันทึกซ้ำ · รูปถูกส่งไปให้ Google Gemini อ่าน ควรปิดเลขบัตรประชาชนและเลขบัญชีก่อนถ่าย' +
+      (d.left !== undefined && d.left !== null ? ' · วันนี้อ่านได้อีก ' + d.left + ' ครั้ง' : '') + '</div>' +
+      '<button class="go" type="button" data-act="pssave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึกลงชีต') + '</button>' +
+      '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
   }
 
   function receiptHTML() {
@@ -462,6 +555,7 @@ select.fin{appearance:auto}
       return head + '<div class="q">อ่านใบเสร็จไม่สำเร็จ</div>' + thumb +
         '<button class="go" type="button" data-act="rcretry">ถ่ายหรือเลือกรูปใหม่</button>';
     }
+    if (R.data.kind === 'payslip') return payslipHTML();
     var d = R.data, warn = '';
     if (d.noAmt || d.noDate || (d.confidence !== null && d.confidence !== undefined && d.confidence < 0.6)) {
       warn = '<div class="warn" role="status">AI อ่านบางค่าไม่ชัด' + (d.noAmt ? ' (ยอดรวม)' : '') + (d.noDate ? ' (วันที่ ใช้วันนี้ไปก่อน)' : '') + ' กรุณาตรวจก่อนบันทึก</div>';
@@ -596,6 +690,41 @@ select.fin{appearance:auto}
     else if (act === 'mic') { listen(); return; }
     else if (act === 'saysave') { saveSay(); return; }
     else if (act === 'receipt' || act === 'rcretry') { var fi = document.getElementById('rc-file'); if (fi) fi.click(); return; }
+    else if (act === 'pson') { var pi = R.data && R.data.items[+v]; if (pi) pi.on = !pi.on; }
+    else if (act === 'pmode') { if (R.data) R.data.mode = v; }
+    else if (act === 'pssave') {
+      var pd = R.data; if (!pd || pd.kind !== 'payslip') return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(pd.date || '')) { S.err = 'เลือกวันที่ให้ถูกต้อง'; render(); return; }
+      var list = [];
+      if (pd.mode === 'net') {
+        var nn = numOf(pd.netIn);
+        if (nn > 0) list.push({ type: 'income', cat: 'เงินเดือน', amount: nn, note: 'เงินเดือนสุทธิ' + (pd.employer ? ' ' + pd.employer : '') });
+      } else {
+        pd.items.forEach(function (it) {
+          var a = numOf(it.amt);
+          if (it.on && a > 0) list.push({ type: it.type, cat: it.cat, amount: a, note: String(it.label || '').trim() });
+        });
+      }
+      if (!list.length) { S.err = 'ไม่มีรายการที่จะบันทึก'; render(); return; }
+      S.busy = true; S.err = ''; render();
+      fetch(BASE, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ api: 'addMany', token: TOKEN, items: list, date: pd.date })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          S.busy = false;
+          if (j && j.ok) {
+            if (Array.isArray(j.list)) { S.tx = j.list; cacheSave(); S.updated = hhmm(new Date()); }
+            S.msg = 'บันทึกจากสลิปเงินเดือน ' + j.data + ' รายการแล้ว';
+            S.kind = 'income'; S.ym = pd.date.slice(0, 7); S.screen = 'home'; S.cat = null;
+            R = { busy: false, preview: '', data: null }; if (!Array.isArray(j.list)) load(); window.scrollTo(0, 0);
+          } else { S.err = (j && j.error) || 'บันทึกไม่สำเร็จ'; }
+          render();
+        })
+        .catch(function () { S.busy = false; S.err = 'เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'; render(); });
+      return;
+    }
     else if (act === 'rcback') { R = { busy: false, preview: '', data: null }; S.screen = 'home'; window.scrollTo(0, 0); }
     else if (act === 'rcsave') {
       var rd = R.data; if (!rd) return;
@@ -692,7 +821,14 @@ select.fin{appearance:auto}
 
   app.addEventListener('input', function (ev) {
     var id = ev.target && ev.target.id;
-    if (id === 'r-date' && R.data) R.data.date = ev.target.value;
+    var pm = /^p-(lbl|amt)-(\d+)$/.exec(id || '');
+    if (pm && R.data && R.data.items && R.data.items[+pm[2]]) {
+      if (pm[1] === 'lbl') R.data.items[+pm[2]].label = ev.target.value;
+      else { R.data.items[+pm[2]].amt = ev.target.value; updatePayTotals(); }
+    }
+    else if (id === 'p-date' && R.data) R.data.date = ev.target.value;
+    else if (id === 'p-net' && R.data) { R.data.netIn = ev.target.value; updatePayTotals(); }
+    else if (id === 'r-date' && R.data) R.data.date = ev.target.value;
     else if (id === 'r-amt' && R.data) R.data.amt = ev.target.value;
     else if (id === 'r-cat' && R.data) R.data.cat = ev.target.value;
     else if (id === 'r-note' && R.data) R.data.note = ev.target.value;
