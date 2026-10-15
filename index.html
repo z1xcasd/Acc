@@ -584,6 +584,16 @@ select.fin{appearance:auto}
       warn = '<div class="warn" role="status">AI อ่านบางค่าไม่ชัด' + (d.noAmt ? ' (ยอดรวม)' : '') + (d.noDate ? ' (วันที่ ใช้วันนี้ไปก่อน)' : '') + ' กรุณาตรวจก่อนบันทึก</div>';
     }
     var opts = EXP.map(function (c) { return '<option' + (c === d.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+    // เตือนถ้ามีรายจ่ายวันเดียวกัน ยอดเท่ากันอยู่แล้ว (กันสแกนใบเสร็จเดิมซ้ำ)
+    var dupAmt = numOf(d.amt), dupHit = null;
+    if (dupAmt > 0 && d.date) {
+      S.tx.forEach(function (t) {
+        if (t.type === 'expense' && Math.abs(t.amount - dupAmt) < 0.005 && String(t.when).slice(0, 10) === d.date) dupHit = t;
+      });
+    }
+    if (dupHit) {
+      warn += '<div class="warn" role="status">มีรายจ่าย ' + money(dupHit.amount) + ' บาท วันเดียวกันอยู่แล้ว (' + esc(dupHit.note || dupHit.cat) + ') ถ้าเป็นใบเสร็จใบเดิม อย่าบันทึกซ้ำ</div>';
+    }
     return head + '<div class="q">ตรวจก่อนบันทึก</div>' + thumb + warn +
       '<div class="lab">วันที่</div><input id="r-date" class="fin" type="date" value="' + esc(d.date) + '">' +
       '<div class="lab">ยอดรวม (บาท)</div><input id="r-amt" class="fin" inputmode="decimal" placeholder="0.00" value="' + esc(d.amt) + '">' +
