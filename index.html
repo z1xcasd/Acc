@@ -135,6 +135,8 @@ select.fin{appearance:auto}
 .ldate{min-height:40px;padding:4px 10px;font-size:15px}
 .ltype{border:0;background:transparent;font-size:13px;font-weight:700;padding:4px 0;min-height:32px}
 .ltype.inc{color:#087A6B}.ltype.exp{color:#B42B41}
+.kvbtn{width:100%;border:0;border-top:1px solid #EDF0F5;background:transparent;font-family:inherit;color:inherit;padding:0;cursor:pointer}
+.kvbtn span:last-child{display:inline-flex;align-items:center;gap:4px}
 .prow{display:grid;grid-template-columns:44px minmax(0,1fr) 110px;gap:8px;align-items:center;background:#fff;border-radius:14px;padding:8px}
 .ptog{width:44px;height:44px;border:1.5px solid #C9D0DF;border-radius:12px;background:#fff;font-size:20px;font-weight:700;color:#fff}
 .ptog.on{background:#16203A;border-color:#16203A}
@@ -234,6 +236,7 @@ select.fin{appearance:auto}
   var S = {
     tx: [], ym: now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2),
     kind: 'expense', screen: 'home', cat: null, row: null,
+    note: '', noteType: 'expense', noteFrom: null, from: null, noteEdit: false, notePick: '',
     edit: false, confirm: false, busy: false, loading: true, err: '', updated: '', msg: '', undo: null, listening: false
   };
 
@@ -352,16 +355,53 @@ select.fin{appearance:auto}
           return '<button class="chip' + (c === t.cat ? ' on' : '') + '" type="button" data-act="setcat" data-v="' + esc(c) + '"' + (S.busy ? ' disabled' : '') + '>' + esc(c) + '</button>';
         }).join('') + '</div></div>';
     }
-    return errBox() + '<button class="back" type="button" data-act="back">' + LEFT + esc(S.cat === null ? 'รายการทั้งหมด' : S.cat) + '</button>' +
+    return errBox() + '<button class="back" type="button" data-act="back">' + LEFT + esc(S.from === 'note' ? S.note : (S.cat === null ? 'รายการทั้งหมด' : S.cat)) + '</button>' +
       '<div class="big"><span class="badge ' + (isInc ? 'i' : 'e') + '">' + (isInc ? 'รายรับ' : 'รายจ่าย') + '</span>' +
       '<div class="amt">' + (isInc ? '+' : '-') + money(t.amount) + '</div><div class="nt">' + esc(t.note || t.cat) + '</div></div>' +
       '<div class="panel" style="padding:4px 18px">' +
       kv('วันที่', fullDay(t.when)) + kv('เวลา', timeOf(t.when)) + kv('ประเภท', isInc ? 'รายรับ' : 'รายจ่าย') +
-      kv('หมวด', esc(t.cat)) + kv('จำนวนเงิน', money(t.amount) + ' บาท') + kv('บันทึก', esc(t.note || '-')) + '</div>' +
+      kv('หมวด', esc(t.cat)) + kv('จำนวนเงิน', money(t.amount) + ' บาท') + (t.note ? '<button class="kv kvbtn" type="button" data-act="notes"><span>บันทึก</span><span>' + esc(t.note) + ' ' + CHEV + '</span></button>' : kv('บันทึก', '-')) + '</div>' +
       chips +
       '<div class="btns"><button class="btn" type="button" data-act="editcat"' + (S.busy ? ' disabled' : '') + '>' + (S.edit ? 'ยกเลิกการเปลี่ยน' : 'เปลี่ยนหมวด') + '</button>' +
       '<button class="btn del' + (S.confirm ? ' sure' : '') + '" type="button" data-act="del"' + (S.busy ? ' disabled' : '') + '>' +
       (S.busy ? 'กำลังทำงาน…' : (S.confirm ? 'กดอีกครั้งเพื่อลบ' : 'ลบรายการนี้')) + '</button></div>' + footer();
+  }
+
+  // ---------- รวมรายการที่มีโน้ตเดียวกันในเดือน ----------
+  function noteKey(t) { return String(t.note || '').trim().toLowerCase(); }
+  function noteRows() {
+    var k = String(S.note || '').trim().toLowerCase();
+    return S.tx.filter(function (t) { return inMonth(t) && t.type === S.noteType && noteKey(t) === k; })
+      .sort(function (a, b) { return a.when < b.when ? 1 : a.when > b.when ? -1 : b.row - a.row; });
+  }
+  function noteHTML() {
+    var rows = noteRows(), isInc = S.noteType === 'income';
+    var total = rows.reduce(function (s2, t) { return s2 + t.amount; }, 0);
+    var items = rows.map(function (t) {
+      return '<button class="row item" type="button" data-act="open" data-v="' + t.row + '" style="min-height:66px">' +
+        '<div class="g" style="min-width:0"><div class="n">' + esc(t.cat) + '</div><div class="d">' + dayLabel(t.when) + ' · ' + timeOf(t.when) + '</div></div>' +
+        '<div class="a ' + (isInc ? 'inc' : 'exp') + '">' + (isInc ? '+' : '-') + money(t.amount) + '</div>' + CHEV + '</button>';
+    }).join('');
+    if (!items) items = '<div class="empty">ไม่มีรายการ ' + esc(S.note) + ' ในเดือนนี้</div>';
+    var cats = isInc ? INC : EXP, bulk = '';
+    if (rows.length > 1) {
+      if (S.noteEdit) {
+        bulk = '<div class="panel" style="padding-bottom:16px"><div class="ph"><h2>เลือกหมวดใหม่ให้ทุกรายการ</h2></div><div class="chips">' +
+          cats.map(function (c) { return '<button class="chip' + (c === S.notePick ? ' on' : '') + '" type="button" data-act="notepick" data-v="' + esc(c) + '"' + (S.busy ? ' disabled' : '') + '>' + esc(c) + '</button>'; }).join('') +
+          '</div></div>' +
+          '<button class="go" type="button" data-act="notego"' + ((S.busy || !S.notePick) ? ' disabled' : '') + '>' +
+          (S.busy ? 'กำลังเปลี่ยน…' : (S.notePick ? 'ยืนยันเปลี่ยน ' + rows.length + ' รายการเป็น ' + esc(S.notePick) : 'เลือกหมวดก่อน')) + '</button>' +
+          '<button class="btn" type="button" data-act="notecancel" style="min-height:50px">ยกเลิกการเปลี่ยน</button>';
+      } else {
+        bulk = '<button class="btn" type="button" data-act="noteedit">เปลี่ยนหมวดทั้ง ' + rows.length + ' รายการ</button>';
+      }
+    }
+    return errBox() + okBox() + '<button class="back" type="button" data-act="noteback">' + LEFT + 'กลับ</button>' +
+      '<div><div class="title">' + esc(S.note) + '</div><div class="sub">' + (isInc ? 'รายรับ' : 'รายจ่าย') + ' · ' + rows.length + ' รายการ</div></div>' +
+      '<div class="month"><button type="button" data-act="prev" aria-label="เดือนก่อนหน้า">' + LEFT + '</button><span>' + monthLabel(S.ym) +
+      '</span><button type="button" data-act="next" aria-label="เดือนถัดไป">' + RIGHT + '</button></div>' +
+      '<div class="sum"><span>รวม</span><span>฿' + money(total) + '</span></div>' +
+      '<div class="panel" style="padding-top:2px">' + items + '</div>' + bulk + footer();
   }
 
   function fabHTML() {
@@ -746,10 +786,11 @@ select.fin{appearance:auto}
   }
 
   function render() {
-    if (S.screen === 'detail' && !findRow(S.row)) S.screen = 'list';
+    if (S.screen === 'detail' && !findRow(S.row)) S.screen = S.from === 'note' ? 'note' : 'list';
+    if (S.screen === 'note' && !S.note) S.screen = 'list';
     if (S.screen === 'list' && S.cat !== null && !S.loading && listRows().length === 0) S.screen = 'home';
     if (!TOKEN) S.screen = 'setup';
-    var body = S.screen === 'setup' ? setupHTML() : S.screen === 'receipt' ? receiptHTML() : S.screen === 'home' ? homeHTML() : S.screen === 'list' ? listHTML() : S.screen === 'add' ? addHTML() : S.screen === 'say' ? sayHTML() : detailHTML();
+    var body = S.screen === 'setup' ? setupHTML() : S.screen === 'receipt' ? receiptHTML() : S.screen === 'home' ? homeHTML() : S.screen === 'list' ? listHTML() : S.screen === 'add' ? addHTML() : S.screen === 'say' ? sayHTML() : S.screen === 'note' ? noteHTML() : detailHTML();
     app.innerHTML = body + ((S.screen === 'home' || S.screen === 'list') ? fabHTML() : '');
     if (S.screen === 'say' && !S.listening) {
       setTimeout(function () { var el = document.getElementById('w-say'); if (el && el.focus && !el.value) el.focus(); }, 60);
@@ -791,8 +832,37 @@ select.fin{appearance:auto}
     else if (act === 'cat') { S.cat = v; S.screen = 'list'; window.scrollTo(0, 0); }
     else if (act === 'all') { S.cat = null; S.screen = 'list'; window.scrollTo(0, 0); }
     else if (act === 'home') { S.screen = 'home'; window.scrollTo(0, 0); }
-    else if (act === 'open') { S.row = +v; S.screen = 'detail'; S.edit = false; S.confirm = false; window.scrollTo(0, 0); }
-    else if (act === 'back') { S.screen = 'list'; S.edit = false; S.confirm = false; window.scrollTo(0, 0); }
+    else if (act === 'open') { S.from = S.screen === 'note' ? 'note' : null; S.row = +v; S.screen = 'detail'; S.edit = false; S.confirm = false; window.scrollTo(0, 0); }
+    else if (act === 'back') { S.screen = S.from === 'note' ? 'note' : 'list'; S.edit = false; S.confirm = false; window.scrollTo(0, 0); }
+    else if (act === 'notes') {
+      var nt = findRow(S.row);
+      if (nt && nt.note) { S.note = nt.note; S.noteType = nt.type; S.noteFrom = nt.row; S.from = null; S.noteEdit = false; S.notePick = ''; S.edit = false; S.confirm = false; S.screen = 'note'; window.scrollTo(0, 0); }
+    }
+    else if (act === 'noteback') { S.noteEdit = false; S.notePick = ''; S.screen = S.noteFrom && findRow(S.noteFrom) ? 'detail' : 'list'; if (S.screen === 'detail') S.row = S.noteFrom; S.from = null; window.scrollTo(0, 0); }
+    else if (act === 'noteedit') { S.noteEdit = true; S.notePick = ''; }
+    else if (act === 'notecancel') { S.noteEdit = false; S.notePick = ''; }
+    else if (act === 'notepick') { S.notePick = v; }
+    else if (act === 'notego') {
+      var nrows = noteRows(), ncat = S.notePick;
+      if (!ncat || !nrows.length) return;
+      S.busy = true; S.err = ''; render();
+      fetch(BASE, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ api: 'setCatMany', token: TOKEN, cat: ncat, items: nrows.map(function (t) { return { row: t.row, sig: t.sig }; }) })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          S.busy = false;
+          if (j && j.ok) {
+            ((j.data && j.data.items) || []).forEach(function (it) { applyCat(it.row, ncat, it.sig); });
+            S.msg = 'เปลี่ยนหมวด ' + ((j.data && j.data.count) || nrows.length) + ' รายการเป็น ' + ncat + ' แล้ว';
+            S.noteEdit = false; S.notePick = '';
+          } else { S.err = (j && j.error) || 'เปลี่ยนหมวดไม่สำเร็จ'; }
+          render();
+        })
+        .catch(function () { S.busy = false; S.err = 'เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'; render(); });
+      return;
+    }
     else if (act === 'refresh') { load(); return; }
     else if (act === 'fab') { resetW(); S.screen = 'add'; window.scrollTo(0, 0); }
     else if (act === 'say') { W.say = ''; S.screen = 'say'; window.scrollTo(0, 0); }
@@ -969,7 +1039,7 @@ select.fin{appearance:auto}
       if (!S.confirm) { S.confirm = true; render(); return; }
       var d = findRow(S.row); S.busy = true; render();
       google.script.run
-        .withSuccessHandler(function () { S.busy = false; S.confirm = false; S.screen = 'list'; S.row = null; applyDelete(d.row); render(); })
+        .withSuccessHandler(function () { S.busy = false; S.confirm = false; S.screen = S.from === 'note' ? 'note' : 'list'; S.row = null; applyDelete(d.row); render(); })
         .withFailureHandler(fail)
         .apiDelete(TOKEN, d.row, d.sig);
       return;
