@@ -131,6 +131,10 @@ h1{margin:0;font-size:22px;font-weight:700}
 .thumb{width:100%;max-height:240px;object-fit:contain;border-radius:14px;background:#fff;border:1px solid #E1E6EF}
 .warn{background:#FFF4DB;color:#7A4B00;border-radius:12px;padding:10px 14px;font-size:15px}
 select.fin{appearance:auto}
+.lrow{align-items:start}.lrow .ptog{margin-top:2px}.lrow.off{opacity:.55}
+.ldate{min-height:40px;padding:4px 10px;font-size:15px}
+.ltype{border:0;background:transparent;font-size:13px;font-weight:700;padding:4px 0;min-height:32px}
+.ltype.inc{color:#087A6B}.ltype.exp{color:#B42B41}
 .prow{display:grid;grid-template-columns:44px minmax(0,1fr) 110px;gap:8px;align-items:center;background:#fff;border-radius:14px;padding:8px}
 .ptog{width:44px;height:44px;border:1.5px solid #C9D0DF;border-radius:12px;background:#fff;font-size:20px;font-weight:700;color:#fff}
 .ptog.on{background:#16203A;border-color:#16203A}
@@ -488,6 +492,16 @@ select.fin{appearance:auto}
                 mode: 'net',
                 items: (d.items || []).map(function (it) { return { type: it.type, cat: it.cat, label: it.label, amt: String(it.amount), on: true }; })
               };
+            } else if (d.kind === 'list') {
+              var prevDate = '';
+              R.data = {
+                kind: 'list', left: d.left, confidence: d.confidence,
+                rows: (d.rows || []).map(function (r) {
+                  var dt = r.date || prevDate || ymd(new Date());
+                  prevDate = dt;
+                  return { date: dt, noDate: !r.date, note: r.label || '', amt: String(r.amount), cat: r.cat || 'อื่นๆ', type: r.type === 'income' ? 'income' : 'expense', on: r.type !== 'income' };
+                })
+              };
             } else R.data = {
               kind: 'receipt',
               date: d.date || '', amt: d.total ? String(d.total) : '', cat: d.cat || 'อื่นๆ',
@@ -567,6 +581,62 @@ select.fin{appearance:auto}
       '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
   }
 
+  // ---------- รูปประวัติรายการหลายบรรทัด ----------
+  function listDup(r) {
+    var a = numOf(r.amt), hit = false;
+    if (!(a > 0)) return false;
+    S.tx.forEach(function (t) {
+      if ((t.type === r.type) && Math.abs(t.amount - a) < 0.005 && String(t.when).slice(0, 10) === r.date) hit = true;
+    });
+    return hit;
+  }
+  function listSummary() {
+    var d = R.data, n = 0, exp = 0, inc = 0;
+    d.rows.forEach(function (r) {
+      var a = numOf(r.amt);
+      if (r.on && a > 0) { n++; if (r.type === 'income') inc += a; else exp += a; }
+    });
+    return { n: n, html: '<span>รวมที่จะบันทึก (' + n + ' รายการ)</span><span>' + money(exp) + (inc > 0 ? '<small style="font-size:14px;font-weight:500;color:#A9B4CE"> · รายรับ ' + money(inc) + '</small>' : '') + '</span>' };
+  }
+  function updateListTotals() {
+    var el = document.getElementById('l-sum'), btn = document.getElementById('l-save'), t = listSummary();
+    if (el) el.innerHTML = t.html;
+    if (btn) { btn.textContent = S.busy ? 'กำลังบันทึก…' : 'บันทึก ' + t.n + ' รายการ'; btn.disabled = S.busy || t.n === 0; }
+  }
+  function listRcHTML() {
+    var d = R.data;
+    var head = '<button class="back" type="button" data-act="rcback">' + LEFT + 'ยกเลิก</button>' + errBox();
+    var thumb = R.preview ? '<img class="thumb" alt="รูปรายการ" src="' + R.preview + '">' : '';
+    if (!d.rows.length) {
+      return head + '<div class="q">อ่านรายการไม่ได้</div>' + thumb +
+        '<div class="note" style="text-align:left">ลองแคปให้เห็นชื่อรายการกับจำนวนเงินชัดๆ</div>' +
+        '<button class="go" type="button" data-act="rcretry">ถ่ายหรือเลือกรูปใหม่</button>';
+    }
+    var warn = '';
+    if (d.rows.some(function (r) { return r.noDate; })) warn += '<div class="warn" role="status">บางบรรทัดอ่านวันที่ไม่ครบ ใช้วันเดียวกับบรรทัดบน (หรือวันนี้) กรุณาตรวจ</div>';
+    if (d.confidence !== null && d.confidence !== undefined && d.confidence < 0.6) warn += '<div class="warn" role="status">AI อ่านบางค่าไม่ชัด กรุณาตรวจก่อนบันทึก</div>';
+    if (d.rows.some(function (r) { return r.type === 'income'; })) warn += '<div class="warn" role="status">บรรทัดเงินเข้าถูกแยกเป็นรายรับและยังไม่ได้ติ๊กไว้ ติ๊กเองถ้าต้องการบันทึก</div>';
+    var body = d.rows.map(function (r, i) {
+      var cats = r.type === 'income' ? INC : EXP;
+      var opts = cats.map(function (c) { return '<option' + (c === r.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+      var flags = (r.noDate ? ' <span style="color:#7A4B00">⚠ วันที่ไม่ครบ</span>' : '') + (listDup(r) ? ' <span style="color:#7A4B00">⚠ มีรายการนี้แล้ว</span>' : '');
+      return '<div class="prow lrow' + (r.on ? '' : ' off') + '">' +
+        '<button class="ptog' + (r.on ? ' on' : '') + '" type="button" data-act="ltog" data-v="' + i + '" aria-label="เลือกหรือไม่เลือกรายการนี้">' + (r.on ? '✓' : '') + '</button>' +
+        '<div class="pmid"><div class="pty"><button type="button" class="ltype ' + (r.type === 'income' ? 'inc' : 'exp') + '" data-act="ltype" data-v="' + i + '">' + (r.type === 'income' ? 'รายรับ' : 'รายจ่าย') + ' ⇄</button>' + flags + '</div>' +
+        '<input id="l-d-' + i + '" class="fin ldate" type="date" value="' + esc(r.date) + '">' +
+        '<input id="l-n-' + i + '" class="fin" maxlength="60" value="' + esc(r.note) + '">' +
+        '<select id="l-c-' + i + '" class="fin">' + opts + '</select></div>' +
+        '<input id="l-a-' + i + '" class="fin pamt" inputmode="decimal" value="' + esc(r.amt) + '"></div>';
+    }).join('');
+    var t = listSummary();
+    return head + '<div class="q">ตรวจก่อนบันทึก</div><div class="sub">อ่านได้ ' + d.rows.length + ' รายการจากรูป</div>' + thumb + warn + body +
+      '<div class="sum" id="l-sum">' + t.html + '</div>' +
+      '<div class="note" style="text-align:left">เทียบกับยอดในแอปต้นทางให้ตรงก่อนบันทึก · รูปถูกส่งไปให้ Google Gemini อ่าน (รุ่นฟรีอาจถูกนำไปปรับปรุงบริการของ Google) และไม่ได้เก็บรูปไว้ในชีต' +
+        (d.left !== undefined && d.left !== null ? ' · วันนี้อ่านได้อีก ' + d.left + ' ครั้ง' : '') + '</div>' +
+      '<button id="l-save" class="go" type="button" data-act="lsave"' + ((S.busy || t.n === 0) ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึก ' + t.n + ' รายการ') + '</button>' +
+      '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
+  }
+
   function receiptHTML() {
     var head = '<button class="back" type="button" data-act="rcback">' + LEFT + 'ยกเลิก</button>' + errBox();
     var thumb = R.preview ? '<img class="thumb" alt="รูปใบเสร็จ" src="' + R.preview + '">' : '';
@@ -579,6 +649,7 @@ select.fin{appearance:auto}
         '<button class="go" type="button" data-act="rcretry">ถ่ายหรือเลือกรูปใหม่</button>';
     }
     if (R.data.kind === 'payslip') return payslipHTML();
+    if (R.data.kind === 'list') return listRcHTML();
     var d = R.data, warn = '';
     if (d.noAmt || d.noDate || (d.confidence !== null && d.confidence !== undefined && d.confidence < 0.6)) {
       warn = '<div class="warn" role="status">AI อ่านบางค่าไม่ชัด' + (d.noAmt ? ' (ยอดรวม)' : '') + (d.noDate ? ' (วันที่ ใช้วันนี้ไปก่อน)' : '') + ' กรุณาตรวจก่อนบันทึก</div>';
@@ -765,6 +836,45 @@ select.fin{appearance:auto}
         .catch(function () { S.busy = false; S.err = 'เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'; render(); });
       return;
     }
+    else if (act === 'ltog') { var lr = R.data && R.data.rows[+v]; if (lr) lr.on = !lr.on; }
+    else if (act === 'ltype') {
+      var lt = R.data && R.data.rows[+v];
+      if (lt) { lt.type = lt.type === 'income' ? 'expense' : 'income'; lt.cat = 'อื่นๆ'; }
+    }
+    else if (act === 'lsave') {
+      var ld = R.data; if (!ld || ld.kind !== 'list') return;
+      var llist = [], bad = '';
+      ld.rows.forEach(function (r) {
+        if (!r.on) return;
+        var a = numOf(r.amt);
+        if (!(a > 0)) { bad = 'มีรายการที่ยอดเป็น 0 กรอกยอดหรือเอาติ๊กออก'; return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) { bad = 'เลือกวันที่ให้ครบทุกรายการ'; return; }
+        llist.push({ type: r.type, cat: r.cat, amount: a, note: String(r.note || '').trim(), date: r.date });
+      });
+      if (bad) { S.err = bad; render(); return; }
+      if (!llist.length) { S.err = 'ยังไม่ได้เลือกรายการ'; render(); return; }
+      if (llist.length > 30) { S.err = 'เลือกได้ไม่เกิน 30 รายการต่อครั้ง'; render(); return; }
+      S.busy = true; S.err = ''; render();
+      fetch(BASE, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ api: 'addMany', token: TOKEN, items: llist, date: llist[0].date })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          S.busy = false;
+          if (j && j.ok) {
+            var added = j.data && j.data.items;
+            if (Array.isArray(added)) applyItems(added);
+            S.msg = 'บันทึกจากรูป ' + (j.data && j.data.count !== undefined ? j.data.count : llist.length) + ' รายการแล้ว';
+            S.undo = Array.isArray(added) ? { list: added.map(function (x) { return { row: x.row, sig: x.sig }; }) } : null;
+            S.kind = llist[0].type; S.ym = llist[0].date.slice(0, 7); S.screen = 'home'; S.cat = null;
+            R = { busy: false, preview: '', data: null }; if (!Array.isArray(added)) load(); window.scrollTo(0, 0);
+          } else { S.err = (j && j.error) || 'บันทึกไม่สำเร็จ'; }
+          render();
+        })
+        .catch(function () { S.busy = false; S.err = 'เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'; render(); });
+      return;
+    }
     else if (act === 'rcback') { R = { busy: false, preview: '', data: null }; S.screen = 'home'; window.scrollTo(0, 0); }
     else if (act === 'rcsave') {
       var rd = R.data; if (!rd) return;
@@ -873,6 +983,15 @@ select.fin{appearance:auto}
     if (pm && R.data && R.data.items && R.data.items[+pm[2]]) {
       if (pm[1] === 'lbl') R.data.items[+pm[2]].label = ev.target.value;
       else { R.data.items[+pm[2]].amt = ev.target.value; updatePayTotals(); }
+    }
+    else if (/^l-[dnac]-\d+$/.test(id || '') && R.data && R.data.rows) {
+      var lm = /^l-([dnac])-(\d+)$/.exec(id), lrow = R.data.rows[+lm[2]];
+      if (lrow) {
+        if (lm[1] === 'd') { lrow.date = ev.target.value; lrow.noDate = false; }
+        else if (lm[1] === 'n') lrow.note = ev.target.value;
+        else if (lm[1] === 'c') lrow.cat = ev.target.value;
+        else { lrow.amt = ev.target.value; updateListTotals(); }
+      }
     }
     else if (id === 'p-date' && R.data) R.data.date = ev.target.value;
     else if (id === 'p-net' && R.data) { R.data.netIn = ev.target.value; updatePayTotals(); }
