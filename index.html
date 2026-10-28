@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#F3F5FA">
+<meta name="theme-color" content="#EAF1FB">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>บัญชี</title>
 <link rel="preconnect" href="https://script.google.com">
@@ -146,6 +146,55 @@ select.fin{appearance:auto}
 .pamt{text-align:right;min-height:44px;padding:6px 10px;font-size:16px;font-variant-numeric:tabular-nums}
 .psum{background:#fff;border-radius:16px;padding:14px 16px;font-size:16px;line-height:1.7}
 .psum .ok{color:#087A6B;font-weight:600}.psum .bad{color:#B42B41;font-weight:600}
+
+/* ===== สกินแบบเช็คระยะ: Liquid Glass โทนสว่าง (เปลี่ยนเฉพาะสี/เงา/พื้นหลัง ไม่แตะระยะห่าง) ===== */
+:root{--accent:#2E6BD0;--next:#1F57B5;--surface:rgba(255,255,255,.94);
+ --glass:linear-gradient(180deg,rgba(255,255,255,.82) 0%,rgba(255,255,255,.58) 100%);
+ --glass-edge:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.5),inset 0 0 0 1px rgba(255,255,255,.4);
+ --glass-shadow:0 8px 24px rgba(40,70,130,.10),0 1px 3px rgba(40,70,130,.08);
+ --glass-blur:blur(22px) saturate(180%);
+ --tint:linear-gradient(180deg,#3670D6 0%,#2559BA 100%);
+ --tint-edge:inset 0 1px 1px rgba(255,255,255,.65),inset 0 -1px 1px rgba(255,255,255,.2),inset 0 0 0 1px rgba(255,255,255,.18)}
+html,body{background:#EEF3FB}
+body{background:linear-gradient(180deg,#E2EBFA 0%,#EEF2FC 45%,#F7F4FB 100%) fixed;color:#151B24}
+.muted,.card .l,.item .d,.sub,.lab,.note,.empty,.kv span:first-child,.big .nt,.prog{color:#4B5662}
+button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
+/* เนื้อหา: พื้นขาวเกือบทึบ */
+.card,.panel,.big,.sumbox{background:var(--surface);box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),inset 0 1px 0 #fff,var(--glass-shadow)}
+.tile{background:var(--surface);border-color:rgba(255,255,255,.9);box-shadow:inset 0 1px 0 #fff,var(--glass-shadow)}
+.row,.all,.kv{border-top-color:rgba(30,50,90,.09)}
+.track{background:rgba(30,50,90,.10)}
+/* ส่วนควบคุม: กระจก */
+.month,.seg{background:var(--glass);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--glass-edge),var(--glass-shadow)}
+.btn,.chip,.fin,.bigin,.camfab,.thumb{background:var(--glass);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border:1px solid rgba(255,255,255,.75);box-shadow:var(--glass-edge),var(--glass-shadow)}
+.fin,.bigin{background:var(--surface);border:1px solid rgba(30,50,90,.16);box-shadow:inset 0 1px 0 #fff,0 1px 3px rgba(40,70,130,.08)}
+.bigin{border:1.5px solid rgba(46,107,208,.45)}
+.fin:focus,.bigin:focus{outline:none;border-color:rgba(46,107,208,.6);box-shadow:0 0 0 3px rgba(46,107,208,.2)}
+.month button:active{background:rgba(46,107,208,.1)}
+.seg button.on{background:var(--tint);box-shadow:var(--tint-edge)}
+.seg button{color:#4B5662}
+.chip.on,.btn.sure{background:var(--tint);border-color:rgba(255,255,255,.35);color:#fff;box-shadow:var(--tint-edge),0 8px 22px rgba(46,107,208,.28)}
+.go,.fab,.sum,.hero{background:var(--tint);color:#fff;box-shadow:var(--tint-edge),0 8px 22px rgba(46,107,208,.28)}
+.hero .l,.hero .s,.sum span:first-child{color:#D6E3FA}
+.bar{background:rgba(255,255,255,.28)}.bar i{background:#fff}
+.btn.del{color:#9B2C1F;border-color:rgba(214,120,108,.55)}
+.btn.sure{background:linear-gradient(180deg,#D4453A 0%,#B3261E 100%)}
+.go:disabled{background:rgba(255,255,255,.55);color:#4B5662;box-shadow:var(--glass-edge);opacity:1}
+.chip.inc{color:#087A6B;background:linear-gradient(180deg,rgba(242,251,249,.95),rgba(221,244,240,.7))}
+.chip.inc.on{background:linear-gradient(180deg,#14A08C 0%,#087A6B 100%);color:#fff}
+.all,.link{color:#1F57B5}
+.fab{border-radius:999px}
+.micfab{background:linear-gradient(180deg,#14A08C 0%,#087A6B 100%);border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 1px rgba(255,255,255,.6),0 8px 22px rgba(8,122,107,.3)}
+.sheet{background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:inset 0 1px 0 #fff,0 -10px 30px rgba(40,70,130,.15)}
+.scrim{background:rgba(21,27,36,.5)}
+.opt{background:var(--glass);border:1px solid rgba(255,255,255,.75);box-shadow:var(--glass-edge),var(--glass-shadow)}
+.prog .tr{background:rgba(30,50,90,.12)}.prog .tr i{background:var(--accent)}
+.warn,.err{border-radius:12px}
+.wrap button{transition:opacity .12s ease}
+.wrap button:not([disabled]):active{opacity:.7}
+@media (prefers-reduced-transparency:reduce){
+ .month,.btn,.chip,.fin,.bigin,.seg,.camfab,.sheet,.opt{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}
+ .chip.on,.btn.sure,.go,.fab,.sum,.hero,.seg button.on{background:#2E6BD0}}
 </style>
 </head>
 <body>
