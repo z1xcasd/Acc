@@ -955,7 +955,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       '<div class="lab">วันที่ได้รับเงินเดือน</div><input id="p-date" class="fin" type="date" value="' + esc(d.date) + '">' +
       modes + body +
       '<div class="psum" id="p-sum">' + paySummary() + '</div>' +
-      '<div class="note" style="text-align:left">ถ้าบันทึกเงินเดือนเดือนนี้ไว้แล้ว อย่าบันทึกซ้ำ · รูปถูกส่งไปให้ Google Gemini อ่าน ควรปิดเลขบัตรประชาชนและเลขบัญชีก่อนถ่าย' +
+      '<div class="note" style="text-align:left">ถ้าบันทึกเงินเดือนเดือนนี้ไว้แล้ว อย่าบันทึกซ้ำ · รูปถูกส่งไปให้ Claude (Anthropic) อ่าน ควรปิดเลขบัตรประชาชนและเลขบัญชีก่อนถ่าย' +
       (d.left !== undefined && d.left !== null ? ' · วันนี้อ่านได้อีก ' + d.left + ' ครั้ง' : '') + '</div>' +
       '<button class="go" type="button" data-act="pssave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึกลงชีต') + '</button>' +
       '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
@@ -1011,7 +1011,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
     var t = listSummary();
     return head + '<div class="q">ตรวจก่อนบันทึก</div><div class="sub">อ่านได้ ' + d.rows.length + ' รายการจากรูป</div>' + thumb + warn + body +
       '<div class="sum" id="l-sum">' + t.html + '</div>' +
-      '<div class="note" style="text-align:left">เทียบกับยอดในแอปต้นทางให้ตรงก่อนบันทึก · รูปถูกส่งไปให้ Google Gemini อ่าน (รุ่นฟรีอาจถูกนำไปปรับปรุงบริการของ Google) และไม่ได้เก็บรูปไว้ในชีต' +
+      '<div class="note" style="text-align:left">เทียบกับยอดในแอปต้นทางให้ตรงก่อนบันทึก · รูปถูกส่งไปให้ Claude (Anthropic) อ่าน และไม่ได้เก็บรูปไว้ในชีต' +
         (d.left !== undefined && d.left !== null ? ' · วันนี้อ่านได้อีก ' + d.left + ' ครั้ง' : '') + '</div>' +
       '<button id="l-save" class="go" type="button" data-act="lsave"' + ((S.busy || t.n === 0) ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึก ' + t.n + ' รายการ') + '</button>' +
       '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
@@ -1050,7 +1050,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       '<div class="lab">ยอดรวม (บาท)</div><input id="r-amt" class="fin" inputmode="decimal" placeholder="0.00" value="' + esc(d.amt) + '">' +
       '<div class="lab">หมวด</div><select id="r-cat" class="fin">' + opts + '</select>' +
       '<div class="lab">บันทึกช่วยจำ</div><input id="r-note" class="fin" maxlength="60" value="' + esc(d.note) + '">' +
-      '<div class="note" style="text-align:left">รูปถูกส่งไปให้ Google Gemini อ่าน (รุ่นฟรีอาจถูกนำไปปรับปรุงบริการของ Google) และไม่ได้เก็บรูปไว้ในชีต' +
+      '<div class="note" style="text-align:left">รูปถูกส่งไปให้ Claude (Anthropic) อ่าน และไม่ได้เก็บรูปไว้ในชีต' +
         (d.left !== undefined && d.left !== null ? ' · วันนี้อ่านได้อีก ' + d.left + ' ครั้ง' : '') + '</div>' +
       '<button class="go" type="button" data-act="rcsave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'กำลังบันทึก…' : 'บันทึกลงชีต') + '</button>' +
       '<button class="btn" type="button" data-act="rcretry" style="min-height:50px">ถ่ายหรือเลือกรูปใหม่</button>';
