@@ -230,6 +230,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
 .ac .v{flex:none;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}.ac .v small{display:block;font-size:12.5px;font-weight:600}
 .aic{flex:none;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#F4F8FF,#DCE8FB) center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(30,50,90,.06),0 2px 6px rgba(40,70,130,.12);overflow:hidden}
 .aic[style*="background-image"]{background-color:#fff;background-size:cover}
+.aic.ini{color:#2E5FB8;font-weight:700}
 .ah{display:flex;align-items:center;gap:10px}
 .addrow{width:100%;min-height:52px;border:1.5px dashed rgba(46,107,208,.5);border-radius:14px;background:rgba(255,255,255,.6);color:#1F57B5;font-size:16px;font-weight:600}
 .icons{display:flex;gap:8px;flex-wrap:wrap}
@@ -418,7 +419,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       '<div class="seg"><button type="button" data-act="kind" data-v="expense" class="' + (S.kind === 'expense' ? 'on' : '') + '">รายจ่าย</button>' +
       '<button type="button" data-act="kind" data-v="income" class="' + (S.kind === 'income' ? 'on' : '') + '">รายรับ</button></div></div>' +
       rows + '<button class="all" type="button" data-act="all">ดู' + (S.kind === 'income' ? 'รายรับ' : 'รายจ่าย') + 'ทั้งหมดของเดือนนี้</button></div>' +
-      '<button class="lk" type="button" data-act="acc"><span><b>🐷 บัญชี</b><small>เงินออม · หนี้ (ไม่รวมในหน้านี้)</small></span>' + CHEV + '</button>' + footer();
+      '<button class="lk" type="button" data-act="acc"><span><b>บัญชี</b><small>เงินออม · หนี้ (ไม่รวมในหน้านี้)</small></span>' + CHEV + '</button>' + footer();
   }
 
   function listHTML() {
@@ -458,7 +459,8 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       '<div class="amt">' + (isInc ? '+' : '-') + money(t.amount) + '</div><div class="nt">' + esc(t.note || t.cat) + '</div></div>' +
       '<div class="panel" style="padding:4px 18px">' +
       kv('วันที่', fullDay(t.when)) + kv('เวลา', timeOf(t.when)) + kv('ประเภท', isInc ? 'รายรับ' : 'รายจ่าย') +
-      kv('หมวด', esc(t.cat)) + kv('จำนวนเงิน', money(t.amount) + ' บาท') + (t.note ? '<button class="kv kvbtn" type="button" data-act="notes"><span>บันทึก</span><span>' + esc(t.note) + ' ' + CHEV + '</span></button>' : kv('บันทึก', '-')) + '</div>' +
+      kv('หมวด', esc(t.cat)) + kv('จำนวนเงิน', money(t.amount) + ' บาท') + (t.note ? '<button class="kv kvbtn" type="button" data-act="notes"><span>บันทึก</span><span>' + esc(t.note) + ' ' + CHEV + '</span></button>' : kv('บันทึก', '-')) +
+      (t.memo ? kv('หมายเหตุ', esc(t.memo)) : '') + '</div>' +
       chips +
       '<div class="btns"><button class="btn" type="button" data-act="editcat"' + (S.busy ? ' disabled' : '') + '>' + (S.edit ? 'ยกเลิกการเปลี่ยน' : 'เปลี่ยนหมวด') + '</button>' +
       '<button class="btn del' + (S.confirm ? ' sure' : '') + '" type="button" data-act="del"' + (S.busy ? ' disabled' : '') + '>' +
@@ -512,7 +514,6 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>จดบัญชี</button></div>';
   }
   // ---------- บัญชี (เงินออม / หนี้สิน) ไม่นับในหน้าหลัก ----------
-  var AICONS = ['🐷', '🏦', '💰', '🤝', '🛡️', '📈', '🏠', '🚗', '🏍️', '💳', '📉', '🎓'];
   var AC = { items: null, rows: null, loading: false, key: null, bal: '', date: '', busy: false, confirm: null, form: null, showHidden: false };
   try { var acc0 = JSON.parse(localStorage.getItem('exp.acc') || 'null'); if (acc0 && Array.isArray(acc0.items)) { AC.items = acc0.items; AC.rows = acc0.rows || []; } } catch (e) {}
   function accSave() { try { localStorage.setItem('exp.acc', JSON.stringify({ items: AC.items, rows: AC.rows })); } catch (e) {} }
@@ -531,11 +532,16 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : a.row - b.row; });
   }
   function accNum(v) { var t = String(v === undefined || v === null ? '' : v).replace(/,/g, '').trim(); return t === '' ? NaN : Number(t); }
+  // ไม่มีโลโก้: ใช้ตัวอักษรแรกของชื่อบัญชี (ข้ามสระนำ เ แ โ ใ ไ)
+  function accInitial(name) {
+    var t = String(name || '').trim().replace(/^[เแโใไ]/, '');
+    return t ? t.charAt(0).toUpperCase() : '?';
+  }
   function accIcon(it, big) {
     var sz = big ? 64 : 40;
     return it.logo
       ? '<span class="aic" style="width:' + sz + 'px;height:' + sz + 'px;background-image:url(' + it.logo + ')" aria-hidden="true"></span>'
-      : '<span class="aic" style="width:' + sz + 'px;height:' + sz + 'px;font-size:' + (big ? 28 : 18) + 'px" aria-hidden="true">' + esc(it.icon || '💰') + '</span>';
+      : '<span class="aic ini" style="width:' + sz + 'px;height:' + sz + 'px;font-size:' + (big ? 26 : 16) + 'px" aria-hidden="true">' + esc(accInitial(it.name)) + '</span>';
   }
   function accRowHTML(it) {
     var h = accHist(it.id), last = h[h.length - 1], prev = h[h.length - 2], ch = '', cls = 'inc';
@@ -607,9 +613,6 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
       '<div class="dropbox logobox" id="logobox"><button class="dbmain" type="button" data-act="flogo"><b>แตะเพื่อเลือกรูป</b><span>หรือวาง/ลากรูปโลโก้มาใส่ได้</span></button>' +
       (canRead ? '<button class="dbpaste" type="button" data-act="fpaste">วางรูปที่คัดลอกไว้</button>' : '<div class="dbpaste" id="logopaste" contenteditable="true">แตะค้างแล้วเลือก วาง</div>') +
       (f.logo ? '<button class="minibtn" type="button" data-act="fnologo">เอารูปออก</button>' : '') + '</div></div>' +
-      '<div class="lab">หรือใช้ไอคอน</div><div class="icons">' + AICONS.map(function (ic) {
-        return '<button type="button" class="icb' + (!f.logo && ic === f.icon ? ' on' : '') + '" data-act="ficon" data-v="' + ic + '">' + ic + '</button>';
-      }).join('') + '</div>' +
       '<button class="go" type="button" data-act="fsave"' + (AC.busy ? ' disabled' : '') + '>' + (AC.busy ? 'กำลังบันทึก…' : (f.hidden ? 'บันทึกและแสดงอีกครั้ง' : 'บันทึก')) + '</button>' +
       (f.id && !f.hidden ? '<button class="btn del' + (AC.confirm === 'del' ? ' sure' : '') + '" type="button" data-act="fdel" style="min-height:48px">' + (AC.confirm === 'del' ? 'กดอีกครั้งเพื่อลบ' : 'ลบบัญชี') + '</button>' : '') +
       '<button class="cancel" type="button" data-act="fclose">ยกเลิก</button></div>';
@@ -999,7 +1002,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
     var body = d.rows.map(function (r, i) {
       var cats = r.type === 'income' ? INC : EXP;
       var opts = cats.map(function (c) { return '<option' + (c === r.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
-      var flags = (r.noDate ? ' <span style="color:#7A4B00">⚠ วันที่ไม่ครบ</span>' : '') + (listDup(r) ? ' <span style="color:#7A4B00">⚠ มีรายการนี้แล้ว</span>' : '');
+      var flags = (r.noDate ? ' <span style="color:#7A4B00">วันที่ไม่ครบ</span>' : '') + (listDup(r) ? ' <span style="color:#7A4B00">มีรายการนี้แล้ว</span>' : '');
       return '<div class="prow lrow' + (r.on ? '' : ' off') + '">' +
         '<button class="ptog' + (r.on ? ' on' : '') + '" type="button" data-act="ltog" data-v="' + i + '" aria-label="เลือกหรือไม่เลือกรายการนี้">' + (r.on ? '✓' : '') + '</button>' +
         '<div class="pmid"><div class="pty"><button type="button" class="ltype ' + (r.type === 'income' ? 'inc' : 'exp') + '" data-act="ltype" data-v="' + i + '">' + (r.type === 'income' ? 'รายรับ' : 'รายจ่าย') + ' ⇄</button>' + flags + '</div>' +
@@ -1177,7 +1180,7 @@ button:focus-visible,a:focus-visible{outline-color:#2E6BD0}
     else if (act === 'ahid') { AC.showHidden = !AC.showHidden; }
     else if (act === 'aopen') { AC.key = v; AC.form = null; AC.bal = ''; AC.date = ymd(new Date()); AC.confirm = null; }
     else if (act === 'aclose') { AC.key = null; AC.confirm = null; }
-    else if (act === 'anew') { AC.key = null; AC.confirm = null; AC.form = { id: '', name: '', debt: false, icon: '💰', logo: '', hidden: false }; }
+    else if (act === 'anew') { AC.key = null; AC.confirm = null; AC.form = { id: '', name: '', debt: false, icon: '', logo: '', hidden: false }; }
     else if (act === 'aedit') { var ei = accOf(v); if (!ei) return; AC.key = null; AC.confirm = null; AC.form = { id: ei.id, name: ei.name, debt: !!ei.debt, icon: ei.icon, logo: ei.logo || '', hidden: !!ei.hidden }; }
     else if (act === 'fclose') { AC.form = null; AC.confirm = null; }
     else if (act === 'ftype') { AC.form.debt = v === 'd'; }
